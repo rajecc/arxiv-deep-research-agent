@@ -108,13 +108,13 @@ def main():
         final_output = None
         try:
             # Stream execution
+            final_output = {}
             for event in research_agent_graph.stream(initial_state):
                 for node_name, node_output in event.items():
                     msg = node_output.get("status_message", f"Running {node_name}...")
                     status_container.write(f"✔ **{node_name.replace('_', ' ').title()}**: {msg}")
-            
-            # Fetch final state
-            final_output = research_agent_graph.invoke(initial_state)
+                    final_output.update(node_output)
+
             status_container.update(label="✅ Deep Research Completed!", state="complete", expanded=False)
 
         except Exception as e:

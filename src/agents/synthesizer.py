@@ -126,7 +126,15 @@ def synthesize_research_report(state: ResearchState) -> dict:
         ]
 
         response = llm.invoke(messages)
-        report_content = response.content.strip()
+        if isinstance(response.content, list):
+            text_parts = [
+                b.get("text", "") if isinstance(b, dict) else str(b)
+                for b in response.content
+            ]
+            report_content = "\n".join(text_parts).strip()
+        else:
+            report_content = str(response.content).strip()
+
         logger.success(f"Synthesized research report ({len(report_content):,} chars)")
 
         return {
