@@ -36,3 +36,4 @@ data/cache/parsed/
 
 # Logs
 *.log
+components/research_panel/node_modules/
