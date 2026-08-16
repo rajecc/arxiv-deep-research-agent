@@ -1,3 +1,8 @@
+"""
+ArXiv Deep-Research Agent — Streamlit Application
+Integrates the Apple Dark Blue Research Panel custom component.
+"""
+
 import os
 import streamlit as st
 from datetime import datetime
@@ -5,8 +10,9 @@ from datetime import datetime
 from configs.settings import settings
 from src.models.agent_state import ResearchState
 from src.agents.research_graph import research_agent_graph
+from components.research_panel import research_panel
 
-# Configure Streamlit page
+# ── Page config ─────────────────────────────────────────────
 st.set_page_config(
     page_title="ArXiv Deep-Research Agent",
     page_icon="🔬",
@@ -14,57 +20,123 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS styling for premium look
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.3rem;
-        font-weight: 700;
-        background: -webkit-linear-gradient(45deg, #4F46E5, #06B6D4);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.2rem;
-    }
-    .sub-header {
-        font-size: 1.1rem;
-        color: #94A3B8;
-        margin-bottom: 1.5rem;
-    }
-    .metric-card {
-        background-color: #1E293B;
-        border-radius: 8px;
-        padding: 12px 16px;
-        border: 1px solid #334155;
-        margin-bottom: 10px;
-    }
-</style>
-""", unsafe_allow_html=True)
+# ── Global CSS overrides (outer Streamlit shell) ─────────────
+st.markdown(
+    """
+    <style>
+      /* Hide Streamlit default footer & menu */
+      #MainMenu, footer { visibility: hidden; }
+
+      /* Dark background for the outer shell */
+      .stApp, [data-testid="stAppViewContainer"] {
+          background: linear-gradient(160deg, #020813 0%, #0B132B 100%);
+      }
+
+      /* Sidebar glass panel */
+      [data-testid="stSidebar"] {
+          background: rgba(11,19,43,0.90);
+          backdrop-filter: blur(24px);
+          border-right: 1px solid rgba(58,134,255,0.14);
+      }
+      [data-testid="stSidebar"] * { color: #8ea8d5 !important; }
+      [data-testid="stSidebar"] h2, [data-testid="stSidebar"] label {
+          color: #f0f4ff !important;
+          font-weight: 500 !important;
+      }
+
+      /* Primary button: Apple blue */
+      .stButton>button[kind="primary"] {
+          background: linear-gradient(135deg, #3A86FF, #007AFF);
+          border: none;
+          border-radius: 10px;
+          font-weight: 600;
+          letter-spacing: 0.2px;
+          box-shadow: 0 0 18px rgba(58,134,255,0.4);
+          transition: opacity 0.2s, box-shadow 0.2s;
+      }
+      .stButton>button[kind="primary"]:hover {
+          opacity: 0.88;
+          box-shadow: 0 0 28px rgba(58,134,255,0.6);
+      }
+
+      /* Text inputs */
+      .stTextInput input, .stSelectbox select {
+          background: rgba(13,27,56,0.7) !important;
+          border: 1px solid rgba(58,134,255,0.22) !important;
+          border-radius: 10px !important;
+          color: #f0f4ff !important;
+      }
+      .stTextInput input:focus {
+          border-color: #3A86FF !important;
+          box-shadow: 0 0 0 3px rgba(58,134,255,0.18) !important;
+      }
+
+      /* Sliders */
+      .stSlider [data-baseweb="slider"] { accent-color: #3A86FF; }
+
+      /* Custom component iframe — remove padding */
+      [data-testid="stCustomComponentV1"] iframe { border: none !important; }
+
+      /* Page header */
+      .page-header {
+          font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+          font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+          font-weight: 300;
+          letter-spacing: -0.5px;
+          background: linear-gradient(90deg, #f0f4ff 0%, #3A86FF 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          margin-bottom: 4px;
+      }
+      .page-sub {
+          font-size: 0.9rem;
+          color: #4a6490;
+          letter-spacing: 0.3px;
+          margin-bottom: 24px;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
+# ── State helpers ────────────────────────────────────────────
+def init_state():
+    defaults = {
+        "is_loading": False,
+        "status_steps": [],
+        "papers": [],
+        "analyses": [],
+        "report": "",
+        "fact_check_passed": False,
+        "saved_path": "",
+        "query": "",
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+
+# ── Main app ─────────────────────────────────────────────────
 def main():
-    st.markdown('<div class="main-header">🔬 ArXiv Deep-Research Agent</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sub-header">Autonomous Multi-Agent System for Deep Technical Research & Comparative Analysis</div>',
-        unsafe_allow_html=True,
-    )
+    init_state()
 
-    # Sidebar settings
+    # ── Sidebar ──────────────────────────────────────────────
     with st.sidebar:
-        st.header("⚙️ Agent Settings")
-        
+        st.markdown("## ⚙️ Agent Settings")
+
         provider = st.selectbox(
             "LLM Provider",
             options=["gemini", "openai_compatible"],
             index=0 if settings.DEFAULT_LLM_PROVIDER == "gemini" else 1,
-            help="Select provider configured in .env or enter API key below",
         )
 
         api_key_override = st.text_input(
             "API Key (Optional override)",
             type="password",
-            help="Leave empty to use API key from .env",
+            help="Leave empty to use key from .env",
         )
-
         if api_key_override:
             if provider == "gemini":
                 settings.GEMINI_API_KEY = api_key_override
@@ -72,112 +144,109 @@ def main():
                 settings.OPENAI_API_KEY = api_key_override
 
         st.markdown("---")
-        max_papers = st.slider("Max Papers to Analyze", min_value=1, max_value=5, value=2)
-        min_year = st.slider("Min Publication Year", min_value=2023, max_value=2026, value=2024)
-
+        max_papers = st.slider("Max Papers to Analyze", 1, 5, 2)
+        min_year   = st.slider("Min Publication Year",  2023, 2026, 2024)
         st.markdown("---")
-        st.caption("🚀 Powered by LangGraph • PyMuPDF4LLM • ArXiv • Hugging Face")
+        st.caption("🚀 Powered by LangGraph · PyMuPDF4LLM · ArXiv · Hugging Face · VseLLM")
 
-    # Main input area
+    # ── Header ────────────────────────────────────────────────
+    st.markdown('<div class="page-header">🔬 ArXiv Deep-Research Agent</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="page-sub">Autonomous Multi-Agent System — Deep Technical Research & Comparative Analysis</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Input area ────────────────────────────────────────────
     preset_queries = [
         "Speculative Decoding in Large Language Models",
         "Test-Time Compute Scaling and Reasoning in LLMs",
         "KV Cache Compression and Context Window Extension",
         "Linear Attention and State Space Models for LLMs",
+        "Mixture of Experts Routing Efficiency",
+        "RLHF and Preference Learning for LLM Alignment",
     ]
 
-    selected_preset = st.selectbox(
-        "💡 Quick Suggestions or type custom query below:",
-        options=["-- Custom Topic --"] + preset_queries,
-    )
+    col_sel, col_run = st.columns([4, 1])
+    with col_sel:
+        selected = st.selectbox(
+            "💡 Quick Suggestions:",
+            ["-- Custom Topic --"] + preset_queries,
+            label_visibility="collapsed",
+        )
+        default_query = selected if selected != "-- Custom Topic --" else ""
+        user_query = st.text_input(
+            "Research Topic",
+            value=default_query,
+            placeholder="e.g. Speculative Decoding in Large Language Models",
+            label_visibility="collapsed",
+        )
+    with col_run:
+        start = st.button(
+            "🚀 Start Research",
+            type="primary",
+            use_container_width=True,
+            disabled=st.session_state.is_loading,
+        )
 
-    default_query = selected_preset if selected_preset != "-- Custom Topic --" else "Speculative Decoding in Large Language Models"
-    user_query = st.text_input("Enter AI/ML Research Topic:", value=default_query)
+    # ── Research execution ────────────────────────────────────
+    if start and user_query and not st.session_state.is_loading:
+        st.session_state.is_loading = True
+        st.session_state.status_steps = []
+        st.session_state.papers = []
+        st.session_state.analyses = []
+        st.session_state.report = ""
+        st.session_state.fact_check_passed = False
+        st.session_state.saved_path = ""
+        st.session_state.query = user_query
+        st.rerun()
 
-    start_button = st.button("🚀 Start Deep Research", type="primary", use_container_width=True)
-
-    if start_button and user_query:
+    if st.session_state.is_loading:
         initial_state = ResearchState(
-            user_query=user_query,
+            user_query=st.session_state.query,
             max_papers=max_papers,
             min_year=min_year,
         )
-
-        status_container = st.status("🤖 Deep Research Agent in progress...", expanded=True)
-
-        final_output = None
         try:
-            # Stream execution
-            final_output = {}
+            accumulated = {}
             for event in research_agent_graph.stream(initial_state):
                 for node_name, node_output in event.items():
-                    msg = node_output.get("status_message", f"Running {node_name}...")
-                    status_container.write(f"✔ **{node_name.replace('_', ' ').title()}**: {msg}")
-                    final_output.update(node_output)
+                    msg = node_output.get("status_message", f"Completed {node_name}")
+                    st.session_state.status_steps.append(f"{node_name.replace('_',' ').title()}: {msg}")
+                    accumulated.update(node_output)
 
-            status_container.update(label="✅ Deep Research Completed!", state="complete", expanded=False)
+            st.session_state.papers           = accumulated.get("retrieved_papers", [])
+            st.session_state.analyses         = accumulated.get("paper_analyses", [])
+            st.session_state.report           = accumulated.get("final_report") or accumulated.get("draft_report") or ""
+            st.session_state.fact_check_passed = accumulated.get("fact_check_passed", False)
+            st.session_state.saved_path       = accumulated.get("saved_report_path", "")
 
-        except Exception as e:
-            status_container.update(label=f"❌ Error: {e}", state="error")
-            st.error(f"Error during agent execution: {e}")
-            return
+        except Exception as exc:
+            st.error(f"Agent error: {exc}")
+        finally:
+            st.session_state.is_loading = False
+            st.rerun()
 
-        if final_output:
-            papers = final_output.get("retrieved_papers", [])
-            analyses = final_output.get("paper_analyses", [])
-            final_report = final_output.get("final_report") or final_output.get("draft_report") or ""
-            saved_path = final_output.get("saved_report_path", "")
+    # ── Custom React component ─────────────────────────────────
+    event = research_panel(
+        query=st.session_state.query,
+        papers=st.session_state.papers,
+        analyses=st.session_state.analyses,
+        report=st.session_state.report,
+        fact_check_passed=st.session_state.fact_check_passed,
+        saved_path=st.session_state.saved_path,
+        is_loading=st.session_state.is_loading,
+        status_steps=st.session_state.status_steps,
+        key="research_panel_main",
+    )
 
-            # Tabs for results
-            tab_report, tab_papers, tab_analyses = st.tabs([
-                "📄 Master Technical Report",
-                f"📚 Discovered Papers ({len(papers)})",
-                f"🔬 Structured Extractions ({len(analyses)})",
-            ])
-
-            with tab_report:
-                st.download_button(
-                    label="📥 Download Research Report (.md)",
-                    data=final_report,
-                    file_name=f"arxiv_research_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                    mime="text/markdown",
-                    type="primary",
-                )
-                st.markdown(final_report)
-
-            with tab_papers:
-                for p in papers:
-                    with st.expander(f"📌 {p.title} (arXiv:{p.arxiv_id})"):
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Primary Category", p.primary_category)
-                        with col2:
-                            st.metric("Hugging Face Upvotes", f"⭐ {p.hf_upvotes}")
-                        with col3:
-                            st.metric("Citations", f"📚 {p.citation_count or 0}")
-
-                        st.write(f"**Authors:** {', '.join(p.authors)}")
-                        st.write(f"**Published:** {p.published_date[:10] if p.published_date else 'N/A'}")
-                        st.write(f"**Abstract:** {p.abstract}")
-                        
-                        if p.github_urls:
-                            st.markdown(f"**Code Repos:** {', '.join([f'[{url}]({url})' for url in p.github_urls])}")
-                        st.link_button("View on ArXiv", p.arxiv_url)
-
-            with tab_analyses:
-                for a in analyses:
-                    with st.expander(f"🔬 Analysis: {a.title} ({a.arxiv_id})"):
-                        st.markdown(f"**💡 Core Innovation:** {a.core_innovation}")
-                        st.markdown(f"**🏗 Architecture:** {a.architecture_details}")
-                        if a.mathematical_formulation:
-                            st.markdown(f"**🧮 Mathematical Formulation:**\n{a.mathematical_formulation}")
-                        if a.reproducibility_notes:
-                            st.markdown(f"**🔗 Reproducibility:** {a.reproducibility_notes}")
-                        
-                        if a.benchmarks:
-                            st.write("**📊 Benchmarks:**")
-                            for b in a.benchmarks:
-                                st.write(f"- `{b.task_or_dataset}` on `{b.base_model}`: Speedup = **{b.speedup_factor or 'N/A'}**, Accuracy = `{b.accuracy_delta or 'N/A'}`")
+    # Handle events fired from the React component
+    if event:
+        if event.get("event") == "paper_selected":
+            arxiv_id = event.get("arxiv_id")
+            if arxiv_id:
+                st.toast(f"📌 Selected paper: {arxiv_id}", icon="🔬")
+        elif event.get("event") == "report_downloaded":
+            st.toast("📥 Report downloaded via component!", icon="✅")
 
 
 if __name__ == "__main__":
